@@ -15,6 +15,7 @@
 </head>
 <body>
   <iframe id="app" title="Gastos"></iframe>
+  <div id="recargar" aria-hidden="true" style="position:fixed;top:0;left:0;width:140px;height:calc(64px + env(safe-area-inset-top, 0px));z-index:5;"></div>
   <script>
     // 1) Pegá acá la URL de tu web app (termina en /exec)
     var URL_APP = 'https://script.google.com/macros/s/AKfycbxYUVF_opXLtzkT5j_Z6xAVTHbH1kCXHaGU28vX4qAPpm49ntFeIjlgFA-y96fjp4tqOg/exec';
@@ -22,8 +23,47 @@
     var MODO = 'iframe';
 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
-    if (MODO === 'redirect') location.replace(URL_APP);
-    else document.getElementById('app').src = URL_APP;
+
+    var app = document.getElementById('app');
+    var oculto = 0, cargado = false, intentos = 0, ultimoTap = 0;
+
+    function cargar() {
+      cargado = false;
+      app.src = URL_APP;
+      // Si en 25 segundos no terminó de cargar, reintenta (hasta 2 veces)
+      setTimeout(function () {
+        if (!cargado && intentos < 2) { intentos++; recargar(); }
+      }, 25000);
+    }
+    function recargar() {
+      app.src = 'about:blank';
+      setTimeout(cargar, 80);
+    }
+    app.addEventListener('load', function () {
+      if (app.src && app.src.indexOf('about:blank') !== 0) { cargado = true; intentos = 0; }
+    });
+
+    if (MODO === 'redirect') {
+      location.replace(URL_APP);
+    } else {
+      cargar();
+
+      // Al volver a la app tras un rato en segundo plano, la recarga (evita que quede "muerta")
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { oculto = Date.now(); return; }
+        if (oculto && Date.now() - oculto > 2 * 60 * 1000) recargar();
+        oculto = 0;
+      });
+      window.addEventListener('pageshow', function (e) { if (e.persisted) recargar(); });
+      window.addEventListener('online', function () { if (!cargado) recargar(); });
+
+      // Doble toque sobre la palabra "GASTOS" (arriba a la izquierda) = recargar a mano
+      document.getElementById('recargar').addEventListener('click', function () {
+        var t = Date.now();
+        if (t - ultimoTap < 500) recargar();
+        ultimoTap = t;
+      });
+    }
   </script>
 </body>
 </html>
